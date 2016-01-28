@@ -1,0 +1,1 @@
+﻿DROP CREDENTIAL [{0:S}];

@@ -1,0 +1,1 @@
+﻿CREATE CREDENTIAL [{0:S}] WITH IDENTITY = '{1:S}', SECRET = '{2:S}';
