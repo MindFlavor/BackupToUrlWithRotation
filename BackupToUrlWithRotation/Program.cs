@@ -23,6 +23,7 @@ namespace BackupToUrlWithRotation
         public const string M_BACKUP_START_TIME = "BackupStartTime";
         public const string M_BACKUP_END_TIME = "BackupEndTime";
         public const string M_BACKUP_TOOL_EXECUTED_BY = "BackupToolExecutedBy";
+        public const string M_BACKUP_DATABASE = "BackupDatabaseName";
 
         public const string M_DATETIME_FORMAT = "MM/dd/yyyy HH:mm:ss.fffzzz";
 
@@ -94,14 +95,19 @@ namespace BackupToUrlWithRotation
                 #region List databases to backup
                 // now that we have the container, start with the backups
                 log.DebugFormat("Getting database to backup list");
-                var lDBs = dbUtil.ListDatabases(config.BackupType == BackupType.Log);
-                if(regex != null)
+                var lDBs = dbUtil.ListDatabases();
+                log.DebugFormat("{0:N0} databases available", lDBs.Count); 
+
+                if (config.BackupType == BackupType.Log) // full recovery mode only
+                    lDBs = lDBs.Where(x => x.recovery_model_desc == "FULL").ToList();
+                if (!config.IncludeReadOnly) // exclude read only
+                    lDBs = lDBs.Where(x => !x.is_read_only).ToList();
+                if (regex != null)
                 {
-                    log.InfoFormat("{0:N0} databases to present", lDBs.Count);
-                    lDBs.Where(x => regex.IsMatch(x)).ToList();
+                    log.InfoFormat("{0:N0} databases available", lDBs.Count);
+                    lDBs = lDBs.Where(x => regex.IsMatch(x.Name)).ToList();
                 }
                 log.InfoFormat("{0:N0} databases to backup", lDBs.Count);
-
                 #endregion
 
                 #region Backup to URL
@@ -113,7 +119,7 @@ namespace BackupToUrlWithRotation
                     string strBackupName = string.Format("{0:S}_{1:S}_{2:S}.{3:S}",
                         dt.ToString(DATE_FORMAT),
                         dt.ToString(TIME_FORMAT),
-                        db,
+                        db.Name,
                         config.BackupType.ToString());
                     log.InfoFormat("Backup will be called {0:S}", strBackupName);
 
@@ -161,6 +167,11 @@ namespace BackupToUrlWithRotation
                         cBackup.Metadata.Add(M_BACKUP_TOOL_EXECUTED_BY, bteb);
                     }
 
+                    {
+                        log.DebugFormat("Setting {0:S} metadata {1:S} to {2:S}", cBackup.Name, M_BACKUP_DATABASE, db.Name);
+                        cBackup.Metadata.Add(M_BACKUP_DATABASE, db.Name);
+                    }
+
                     log.InfoFormat("Updating blob \"{0:S}\" metadata", cBackup.Name);
                     cBackup.SetMetadata();
                     #endregion
@@ -195,6 +206,22 @@ namespace BackupToUrlWithRotation
                     {
                         if (blob.Metadata.ContainsKey(M_BACKUP_END_TIME))
                         {
+                            string database_name;
+                            if(!blob.Metadata.TryGetValue(M_BACKUP_DATABASE, out database_name))
+                            {
+                                log.ErrorFormat("Cannot find metadata key {0:S} skipping {1:S}", M_BACKUP_DATABASE, blob.Name);
+                                continue;
+                            }
+
+                            if (regex != null)
+                            {
+                                if (!regex.IsMatch(database_name))
+                                {
+                                    log.InfoFormat("Ignoring backup {0:S} because if of database {1:S} which doesn't match with the regular expression", blob.Name, database_name);
+                                    continue;
+                                }
+                            }
+
                             log.InfoFormat("Backup {0:S} key {1:S} has value {2:S}", blob.Name, M_BACKUP_END_TIME, blob.Metadata[M_BACKUP_END_TIME]);
                             DateTime dEndBackup = DateTime.ParseExact(blob.Metadata[M_BACKUP_END_TIME], M_DATETIME_FORMAT, CultureInfo.InvariantCulture);
                             log.InfoFormat("Backup {0:S} was taken {1:S}", blob.Name, dEndBackup.ToString());

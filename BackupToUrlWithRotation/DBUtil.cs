@@ -13,7 +13,7 @@ namespace BackupToUrlWithRotation
         public const int COMMAND_TIMEOUT = 60 * 60 * 48; // 48 hours
 
         private string ConnectionString { get; set; }
-        private SqlInfoMessageEventHandler SqlInfoMessageEventHandler { get;set;}
+        private SqlInfoMessageEventHandler SqlInfoMessageEventHandler { get; set; }
 
         public DBUtil(string connectionString, SqlInfoMessageEventHandler sqlInfoMessageEventHandler)
         {
@@ -83,41 +83,34 @@ namespace BackupToUrlWithRotation
             SendNonQuery(stmt);
         }
 
-        public void BackupDatabaseToUrl(string database, string url, string credential)
+        public void BackupDatabaseToUrl(Database database, string url, string credential)
         {
             log.DebugFormat("BackupDatabaseToUrl({0:S}, {1:S}, {2:S})", database, url, credential);
-            string stmt = string.Format(GetTSQLScript("backup_to_url.sql"), database, url, credential);
+            string stmt = string.Format(GetTSQLScript("backup_to_url.sql"), database.Name, url, credential);
             SendNonQuery(stmt);
         }
 
-        public void BackupDifferentialToUrl(string database, string url, string credential)
+        public void BackupDifferentialToUrl(Database database, string url, string credential)
         {
             log.DebugFormat("BackupDifferentialToUrl({0:S}, {1:S}, {2:S})", database, url, credential);
-            string stmt = string.Format(GetTSQLScript("backup_differential_to_url.sql"), database, url, credential);
+            string stmt = string.Format(GetTSQLScript("backup_differential_to_url.sql"), database.Name, url, credential);
             SendNonQuery(stmt);
         }
 
-        public void BackupLogToUrl(string database, string url, string credential)
+        public void BackupLogToUrl(Database database, string url, string credential)
         {
             log.DebugFormat("BackupLogToUrl({0:S}, {1:S}, {2:S})", database, url, credential);
-            string stmt = string.Format(GetTSQLScript("backup_log_to_url.sql"), database, url, credential);
+            string stmt = string.Format(GetTSQLScript("backup_log_to_url.sql"), database.Name, url, credential);
             SendNonQuery(stmt);
         }
 
-        public List<string> ListDatabases(bool logOnly)
+        public List<Database> ListDatabases()
         {
-            log.DebugFormat("ListDatabases({0:S})", logOnly.ToString());
-            string stmt;
-            if (logOnly)
-            {
-                stmt = string.Format(GetTSQLScript("list_databases_log.sql"));
-            }
-            else
-            {
-                stmt = string.Format(GetTSQLScript("list_databases_full_backup.sql"));
-            }
+            log.DebugFormat("ListDatabases()");
+            string stmt = string.Format(GetTSQLScript("list_databases.sql"));
 
-            List<string> lDBs = new List<string>();
+
+            List<Database> lDBs = new List<Database>();
             using (SqlConnection conn = OpenConnection())
             {
                 log.DebugFormat("Sending statement {0:S}", stmt);
@@ -127,7 +120,14 @@ namespace BackupToUrlWithRotation
                     {
                         while (reader.Read())
                         {
-                            lDBs.Add(reader.GetString(0));
+                            lDBs.Add(new Database()
+                            {
+                                ID = reader.GetInt32(1),
+                                Name = reader.GetString(0),
+                                is_read_only = reader.GetBoolean(2),
+                                state_desc = reader.GetString(3),
+                                recovery_model_desc = reader.GetString(4)
+                            });
                         }
                     }
                 }

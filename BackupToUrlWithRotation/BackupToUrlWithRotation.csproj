@@ -78,6 +78,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Configuration.cs" />
+    <Compile Include="Database.cs" />
     <Compile Include="DBUtil.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -96,8 +97,7 @@
     <EmbeddedResource Include="tsql\create_credential.sql" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="tsql\list_databases_full_backup.sql" />
-    <EmbeddedResource Include="tsql\list_databases_log.sql" />
+    <EmbeddedResource Include="tsql\list_databases.sql" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="tsql\backup_to_url.sql" />
