@@ -18,6 +18,14 @@ namespace BackupToUrlWithRotation
         public const string DATE_FORMAT = "yyyyMMdd";
         public const string TIME_FORMAT = "HHmmss";
 
+        public const string M_BACKUP_PERFORMED_BY = "BackupPerformedBy";
+        public const string M_BACKUP_START_TIME = "BackupStartTime";
+        public const string M_BACKUP_END_TIME = "BackupEndTime";
+
+        public const string M_DATETIME_FORMAT = "MM/dd/yyyy HH:mm:ss.fffzzz";
+
+        public static string FQ_PROGRAM_NAME = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name + ".exe v" + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
+
         static int Main(string[] args)
         {
             return Process(args);
@@ -25,7 +33,7 @@ namespace BackupToUrlWithRotation
 
         static int Process(string[] args)
         {
-            Console.WriteLine(System.Reflection.Assembly.GetExecutingAssembly().GetName().Name + ".exe v" + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version);
+            Console.WriteLine(FQ_PROGRAM_NAME);
             log4net.Config.XmlConfigurator.Configure(System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("BackupToUrlWithRotation.log4net.xml"));
 
             log.Debug("Parsing command line");
@@ -65,10 +73,13 @@ namespace BackupToUrlWithRotation
             #endregion
 
             dbUtil = new DBUtil(sb.ConnectionString, SQLInfoHandler);
+
+            #region CREDENTIAL creation
             string tempCred = Guid.NewGuid().ToString();
 
             log.InfoFormat("Creating temp credential: {0:S}", tempCred);
             dbUtil.CreateCredential(tempCred, config.StorageAccount, config.Secret);
+            #endregion
 
             try
             {
@@ -85,13 +96,11 @@ namespace BackupToUrlWithRotation
                     log.InfoFormat("Performing backup of {0:S}", db);
 
                     DateTime dt = DateTime.Now;
-
                     string strBackupName = string.Format("{0:S}_{1:S}_{2:S}.{3:S}",
                         dt.ToString(DATE_FORMAT),
                         dt.ToString(TIME_FORMAT),
                         db,
                         config.BackupType.ToString());
-
                     log.InfoFormat("Backup will be called {0:S}", strBackupName);
 
                     string backupUrl = string.Format("{0:S}{1:S}/{2:S}",
@@ -100,7 +109,30 @@ namespace BackupToUrlWithRotation
                         strBackupName);
                     log.DebugFormat("Full backup URI {0:S}", backupUrl);
 
-                    //dbUtil.BackupDatabaseToUrl(db, backupUrl, tempCred);
+                    dbUtil.BackupDatabaseToUrl(db, backupUrl, tempCred);
+
+                    #region Add "our" metadata to the backup
+                    var cBackup = container.GetBlobReference(strBackupName);
+                    {
+                        log.DebugFormat("Setting {0:S} metadata {1:S} to {2:S}", cBackup.Name, M_BACKUP_PERFORMED_BY, FQ_PROGRAM_NAME);
+                        cBackup.Metadata.Add(M_BACKUP_PERFORMED_BY, FQ_PROGRAM_NAME);
+                    }
+
+                    {
+                        string sBackupStartTime = dt.ToString(M_DATETIME_FORMAT, CultureInfo.InvariantCulture);
+                        log.DebugFormat("Setting {0:S} metadata {1:S} to {2:S}", cBackup.Name, M_BACKUP_START_TIME, sBackupStartTime);
+                        cBackup.Metadata.Add(M_BACKUP_START_TIME, sBackupStartTime);
+                    }
+
+                    {
+                        string sBackupEndTime = DateTime.Now.ToString(M_DATETIME_FORMAT, CultureInfo.InvariantCulture);
+                        log.DebugFormat("Setting {0:S} metadata {1:S} to {2:S}", cBackup.Name, M_BACKUP_END_TIME, sBackupEndTime);
+                        cBackup.Metadata.Add(M_BACKUP_END_TIME, sBackupEndTime);
+                    }
+
+                    log.InfoFormat("Updating blob \"{0:S}\" metadata", cBackup.Name);
+                    cBackup.SetMetadata();
+                    #endregion
                 }
                 #endregion
             }
@@ -110,6 +142,8 @@ namespace BackupToUrlWithRotation
                 log.InfoFormat("Dropping temp credential: {0:S}", tempCred);
                 dbUtil.DropCredential(tempCred);
             }
+
+
 
             #region Old backups deletion
             if (config.RetentionDays != -1)
