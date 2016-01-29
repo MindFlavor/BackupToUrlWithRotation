@@ -14,6 +14,7 @@ namespace BackupToUrlWithRotation
         private static readonly log4net.ILog log = log4net.LogManager.GetLogger(typeof(Program));
         private static Configuration config;
         private static DBUtil dbUtil;
+        private static System.Text.RegularExpressions.Regex regex = null;
 
         public const string DATE_FORMAT = "yyyyMMdd";
         public const string TIME_FORMAT = "HHmmss";
@@ -52,6 +53,12 @@ namespace BackupToUrlWithRotation
 
             log.DebugFormat("config == {0:S}", config.ToString());
 
+            if (!string.IsNullOrEmpty(config.Regex))
+            {
+                log.DebugFormat("Parsing RegEx {0:S}", config.Regex);
+                regex = new System.Text.RegularExpressions.Regex(config.Regex);
+            }
+
             System.Data.SqlClient.SqlConnectionStringBuilder sb = new System.Data.SqlClient.SqlConnectionStringBuilder();
             sb.DataSource = config.DataSource;
             if (config.UserIntegrated)
@@ -87,7 +94,13 @@ namespace BackupToUrlWithRotation
                 // now that we have the container, start with the backups
                 log.DebugFormat("Getting database to backup list");
                 var lDBs = dbUtil.ListDatabases(config.BackupType == BackupType.Log);
+                if(regex != null)
+                {
+                    log.InfoFormat("{0:N0} databases to present", lDBs.Count);
+                    lDBs.Where(x => regex.IsMatch(x)).ToList();
+                }
                 log.InfoFormat("{0:N0} databases to backup", lDBs.Count);
+
                 #endregion
 
                 #region Backup to URL
@@ -151,45 +164,50 @@ namespace BackupToUrlWithRotation
                 foreach (var blob_uri in container.ListBlobs())
                 {
                     CloudBlob cblob = new CloudBlob(blob_uri.Uri);
+
                     var blob = container.GetBlobReference(cblob.Name);
+                    log.DebugFormat("Fetching {0:S} metadata", blob.Name);
+                    blob.FetchAttributes();
 
                     // try to parse to our format
-                    log.DebugFormat("Parsing {0:S}", blob.Name);
+                    log.DebugFormat("Parsing {0:S} metadata", blob.Name);
 
-                    DateTime d;
-                    if (!DateTime.TryParseExact(blob.Name.Substring(0, 8), DATE_FORMAT, CultureInfo.InvariantCulture, DateTimeStyles.None, out d))
+                    TimeSpan delta;
+                    try
                     {
-                        log.InfoFormat("Ingoring blob {0:S} because doesn't seem to have a valid date", blob.Name);
-                        continue;
-                    }
-
-                    DateTime t;
-
-                    if (!DateTime.TryParseExact(blob.Name.Substring(9, 6), TIME_FORMAT, CultureInfo.InvariantCulture, DateTimeStyles.None, out t))
-                    {
-                        log.InfoFormat("Ingoring blob {0:S} because doesn't seem to have a valid time", blob.Name);
-                        continue;
-                    }
-
-                    log.DebugFormat("{0:S} and {1:S}", d.ToString(), t.ToString());
-
-                    DateTime dfinal = d.AddHours(t.Hour).AddMinutes(t.Minute).AddSeconds(t.Second);
-                    log.InfoFormat("Backup {0:S} was taken {1:S}", blob.Name, dfinal.ToString());
-
-                    var delta = DateTime.Now - dfinal;
-
-                    if (true) //(delta.TotalDays > config.RetentionDays)
-                    {
-                        log.WarnFormat("Backup {0:S} was taken {1:S} days ago. It will be deleted", blob.Name, delta.TotalDays.ToString());
-                        try
+                        if (blob.Metadata.ContainsKey(M_BACKUP_END_TIME))
                         {
-                            blob.Delete();
+                            log.InfoFormat("Backup {0:S} key {1:S} has value {2:S}", blob.Name, M_BACKUP_END_TIME, blob.Metadata[M_BACKUP_END_TIME]);
+                            DateTime dEndBackup = DateTime.ParseExact(blob.Metadata[M_BACKUP_END_TIME], M_DATETIME_FORMAT, CultureInfo.InvariantCulture);
+                            log.InfoFormat("Backup {0:S} was taken {1:S}", blob.Name, dEndBackup.ToString());
+                            delta = DateTime.Now - dEndBackup;
+
+                            if (delta.TotalDays > config.RetentionDays)
+                            {
+                                log.WarnFormat("Backup {0:S} was taken {1:N0} days ago (retention is {2:N0} days). It will be deleted", blob.Name, delta.TotalDays, config.RetentionDays);
+                                try
+                                {
+                                    blob.Delete();
+                                    log.DebugFormat("Backup {0:S} deleted", blob.Name);
+                                }
+                                catch (Exception e)
+                                {
+                                    log.ErrorFormat("Failed to delete blob {0:S}: {1:S}", blob.Name, e.Message);
+                                }
+                            } else
+                            {
+                                log.InfoFormat("Backup {0:S} is {1:N0} days old (retention is {2:N0} days). Skipped.", blob.Name, delta.TotalDays, config.RetentionDays);
+                            }                           
                         }
-                        catch (Exception e)
+                        else
                         {
-                            log.ErrorFormat("Failed to delete blob {0:S}: {1:S}", blob.Name, e.Message);
+                            log.InfoFormat("Backup {0:S} does not contain {1:S} metadata. Skipped.", blob.Name, M_BACKUP_END_TIME);
                         }
-                        log.DebugFormat("Backup {0:S} deleted", blob.Name);
+                    }
+                    catch (Exception e)
+                    {
+                        log.ErrorFormat("Failed to parse time. Metadata has been tampered with?  {0:S}. Blob will be ignored", e.Message);
+                        continue;
                     }
                 }
             }

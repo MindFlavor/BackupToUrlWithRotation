@@ -25,6 +25,7 @@ namespace BackupToUrlWithRotation
         public string Secret { get; set; }
         public string Container { get; set; }
         public int RetentionDays { get; set; }
+        public string Regex { get; set; }
         public bool Verbose { get; set; }
 
         public const string F_BACKUP_TYPE = "-t";
@@ -34,6 +35,7 @@ namespace BackupToUrlWithRotation
         public const string F_STORAGE_ACCOUNT = "-s";
         public const string F_RETENTION = "-r";
         public const string F_VERBOSE = "-v";
+        public const string F_REGEX = "-in";
 
         public Configuration()
         {
@@ -156,6 +158,22 @@ namespace BackupToUrlWithRotation
             }
             #endregion
 
+            #region look for F_REGEX
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] == F_REGEX)
+                {
+                    if (i + 1 >= args.Length)
+                    {
+                        throw new ArgumentException(string.Format("{0:S} flag must be followed by the regular expression", F_REGEX));
+                    }
+
+                    c.Regex = args[i + 1];
+                    break;
+                }
+            }
+            #endregion
+
             if (c.BackupType == BackupType.Unknown)
                 throw new ArgumentException("Please specify backup type");
 
@@ -177,19 +195,20 @@ namespace BackupToUrlWithRotation
         public static void Usage()
         {
             Console.WriteLine("Syntax:\n" + System.Reflection.Assembly.GetExecutingAssembly().GetName().Name +
-                string.Format(".exe {0:S} <{1:S}|{2:S}|{3:S}> {4:S} <data source> {5:S}|{6:S} <username> <password> {7:S} <storage account> <secret> <container name> {8:S} <retention days>",
+                string.Format(".exe {0:S} {1:S}|{2:S}|{3:S} {4:S} data source {5:S}|{6:S} username password {7:S} storage account secret container name {8:S} retention days <{9:S} regex>",
                 F_BACKUP_TYPE, BackupType.Full.ToString(), BackupType.Differential.ToString(), BackupType.Log.ToString(),
                 F_DATA_SOURCE,
                 F_INTEGRATED, F_USERNAME_PASSWORD,
                 F_STORAGE_ACCOUNT,
-                F_RETENTION
+                F_RETENTION,
+                F_REGEX
                 ));
             Console.WriteLine("\nParameters:");
         }
 
         public override string ToString()
         {
-            return string.Format("Configuration[BackupType={0:S}, DataSource={1:S}, UserIntegrated={2:S}, Username={3:S}, Password={4:S}, StorageAccount={5:S}, Secret={6:S}, Container={7:S}, RetentionDays={8:S}, Verbose={9:S}]",
+            return string.Format("Configuration[BackupType={0:S}, DataSource={1:S}, UserIntegrated={2:S}, Username={3:S}, Password={4:S}, StorageAccount={5:S}, Secret={6:S}, Container={7:S}, RetentionDays={8:S}, Verbose={9:S}, Regex={10:S}]",
                   BackupType.ToString(),
                   DataSource,
                   UserIntegrated.ToString(),
@@ -199,7 +218,8 @@ namespace BackupToUrlWithRotation
                   "xxxx",
                   Container,
                   RetentionDays.ToString(),
-                  Verbose.ToString());
+                  Verbose.ToString(),
+                  Regex);
         }
     }
 }
