@@ -22,6 +22,7 @@ namespace BackupToUrlWithRotation
         public const string M_BACKUP_PERFORMED_BY = "BackupPerformedBy";
         public const string M_BACKUP_START_TIME = "BackupStartTime";
         public const string M_BACKUP_END_TIME = "BackupEndTime";
+        public const string M_BACKUP_TOOL_EXECUTED_BY = "BackupToolExecutedBy";
 
         public const string M_DATETIME_FORMAT = "MM/dd/yyyy HH:mm:ss.fffzzz";
 
@@ -120,9 +121,20 @@ namespace BackupToUrlWithRotation
                         client.StorageUri.PrimaryUri.ToString(),
                         config.Container,
                         strBackupName);
-                    log.DebugFormat("Full backup URI {0:S}", backupUrl);
+                    log.DebugFormat("Backup URI {0:S}", backupUrl);
 
-                    dbUtil.BackupDatabaseToUrl(db, backupUrl, tempCred);
+                    switch (config.BackupType)
+                    {
+                        case BackupType.Full:
+                            dbUtil.BackupDatabaseToUrl(db, backupUrl, tempCred);
+                            break;
+                        case BackupType.Differential:
+                            dbUtil.BackupDifferentialToUrl(db, backupUrl, tempCred);
+                            break;
+                        case BackupType.Log:
+                            dbUtil.BackupLogToUrl(db, backupUrl, tempCred);
+                            break;
+                    }
 
                     #region Add "our" metadata to the backup
                     var cBackup = container.GetBlobReference(strBackupName);
@@ -141,6 +153,12 @@ namespace BackupToUrlWithRotation
                         string sBackupEndTime = DateTime.Now.ToString(M_DATETIME_FORMAT, CultureInfo.InvariantCulture);
                         log.DebugFormat("Setting {0:S} metadata {1:S} to {2:S}", cBackup.Name, M_BACKUP_END_TIME, sBackupEndTime);
                         cBackup.Metadata.Add(M_BACKUP_END_TIME, sBackupEndTime);
+                    }
+
+                    {
+                        string bteb = System.Security.Principal.WindowsIdentity.GetCurrent().Name;
+                        log.DebugFormat("Setting {0:S} metadata {1:S} to {2:S}", cBackup.Name, M_BACKUP_TOOL_EXECUTED_BY, bteb);
+                        cBackup.Metadata.Add(M_BACKUP_TOOL_EXECUTED_BY, bteb);
                     }
 
                     log.InfoFormat("Updating blob \"{0:S}\" metadata", cBackup.Name);

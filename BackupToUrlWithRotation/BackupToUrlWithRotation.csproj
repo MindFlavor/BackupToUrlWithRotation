@@ -104,6 +104,8 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="ico.ico" />
+    <EmbeddedResource Include="tsql\backup_differential_to_url.sql" />
+    <EmbeddedResource Include="tsql\backup_log_to_url.sql" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

@@ -90,6 +90,20 @@ namespace BackupToUrlWithRotation
             SendNonQuery(stmt);
         }
 
+        public void BackupDifferentialToUrl(string database, string url, string credential)
+        {
+            log.DebugFormat("BackupDifferentialToUrl({0:S}, {1:S}, {2:S})", database, url, credential);
+            string stmt = string.Format(GetTSQLScript("backup_differential_to_url.sql"), database, url, credential);
+            SendNonQuery(stmt);
+        }
+
+        public void BackupLogToUrl(string database, string url, string credential)
+        {
+            log.DebugFormat("BackupLogToUrl({0:S}, {1:S}, {2:S})", database, url, credential);
+            string stmt = string.Format(GetTSQLScript("backup_log_to_url.sql"), database, url, credential);
+            SendNonQuery(stmt);
+        }
+
         public List<string> ListDatabases(bool logOnly)
         {
             log.DebugFormat("ListDatabases({0:S})", logOnly.ToString());
